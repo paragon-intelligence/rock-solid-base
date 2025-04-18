@@ -18,4 +18,4 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["rsb"]
+packages = ["src/rsb"]
