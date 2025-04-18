@@ -23,4 +23,7 @@ packages = ["rsb"]
 packages = ["rsb"]
 
 [dependency-groups]
-dev = ["pytest>=8.3.5"]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-mock>=3.14.0",
+]

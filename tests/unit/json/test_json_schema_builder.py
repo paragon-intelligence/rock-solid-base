@@ -836,8 +836,9 @@ class TestPydanticModels:
 
         defn = schema["definitions"]["UserModel"]
         assert defn["title"] == "UserSchema"  # Título da configuração
-        assert defn.get(
-            "additionalProperties"
+        assert "additionalProperties" in defn
+        assert (
+            defn["additionalProperties"] is False
         )  # extra="forbid" deve proibir propriedades adicionais
 
     def test_pydantic_constrained_types(self):
