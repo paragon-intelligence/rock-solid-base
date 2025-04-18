@@ -78,7 +78,13 @@ class JsonSchemaBuilder:
         self._definitions_mapping = {}
         self._processing = set()
 
-    def build(self, *, dereference: bool = False) -> dict[str, Any]:
+    def build(
+        self,
+        *,
+        dereference: bool = False,
+        include_schema_uri: bool = True,
+        include_definitions: bool = True,
+    ) -> dict[str, Any]:
         """
         Build JSON Schema representation.
 
@@ -86,6 +92,10 @@ class JsonSchemaBuilder:
             dereference: Whether to dereference all references in the schema.
                  If True, this will replace all #/definitions/{type} references with
                  the actual definition schemas.
+            include_schema_uri: Whether to include the $schema field in the schema.
+                 Set to False if your schema validator doesn't accept this field.
+            include_definitions: Whether to include the definitions section in the schema.
+                 Set to False if your schema validator doesn't accept this field.
 
         Returns:
             A JSON Schema draft 7 representation of the Python type.
@@ -106,15 +116,18 @@ class JsonSchemaBuilder:
         )
 
         # Assemble the final schema structure
-        final_schema: Dict[str, Any] = {
-            "$schema": self.schema_draft_uri,
-        }
+        final_schema: Dict[str, Any] = {}
+
+        # Adiciona o campo $schema apenas se include_schema_uri for True
+        if include_schema_uri:
+            final_schema["$schema"] = self.schema_draft_uri
+
         final_schema.update(
             root_schema_content
         )  # Directly use the result (inline or $ref)
 
-        # Add definitions section if it's populated
-        if self._definitions:
+        # Add definitions section if it's populated and include_definitions is True
+        if self._definitions and include_definitions:
             # Sort definitions for deterministic output
             final_schema["definitions"] = dict(sorted(self._definitions.items()))
             # Garantir que todas as definições tenham propriedades
