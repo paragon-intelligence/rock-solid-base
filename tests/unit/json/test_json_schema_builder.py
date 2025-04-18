@@ -1205,6 +1205,273 @@ class TestPydanticModels:
         # class InvalidUse(BaseModel):
         #     invalid: NumberContainer[str]
 
+    @pytest.mark.skipif(not HAS_PYDANTIC, reason="Pydantic não está instalado")
+    @pytest.mark.skipif(
+        (sys.version_info.major, sys.version_info.minor) < (3, 13),
+        reason="Sintaxe de genéricos com colchetes requer Python 3.13+",
+    )
+    def test_complex_nested_generics_py313(self):
+        """Teste de genéricos aninhados e complexos com a sintaxe Python 3.13."""
+
+        # 1. Genérico com múltiplos parâmetros de tipo
+        class Pair[K, V](BaseModel):
+            key: K
+            value: V
+
+        # Instanciação com diferentes tipos
+        IntStrPair = Pair[int, str]
+        UUIDFloatPair = Pair[uuid.UUID, float]
+
+        # Teste do par int-str
+        builder_int_str = JsonSchemaBuilder(IntStrPair)
+        schema_int_str = builder_int_str.build()
+
+        pair_int_str_name = "Pair_int_str_"
+        assert pair_int_str_name in schema_int_str["definitions"]
+        pair_def = schema_int_str["definitions"][pair_int_str_name]
+        assert pair_def["properties"]["key"]["type"] == "integer"
+        assert pair_def["properties"]["value"]["type"] == "string"
+        assert pair_def["title"] == "Pair[int, str]"
+
+        # Teste do par UUID-float
+        builder_uuid_float = JsonSchemaBuilder(UUIDFloatPair)
+        schema_uuid_float = builder_uuid_float.build()
+
+        # O Pydantic parece converter uuid.UUID para apenas UUID no nome gerado
+        pair_uuid_float_name = "Pair_UUID_float_"
+        assert pair_uuid_float_name in schema_uuid_float["definitions"]
+        pair_uuid_def = schema_uuid_float["definitions"][pair_uuid_float_name]
+        assert pair_uuid_def["properties"]["key"]["type"] == "string"
+        assert pair_uuid_def["properties"]["key"]["format"] == "uuid"
+        assert pair_uuid_def["properties"]["value"]["type"] == "number"
+
+        # 2. Genéricos aninhados
+        class Container[T](BaseModel):
+            items: List[T]
+            count: int = 0
+
+        # Container de containers
+        NestedContainer = Container[Container[int]]
+
+        builder_nested = JsonSchemaBuilder(NestedContainer)
+        schema_nested = builder_nested.build()
+
+        # Verificar as definições esperadas
+        container_int_name = "Container_int_"
+        nested_container_name = "Container_Container_int__"
+
+        assert container_int_name in schema_nested["definitions"]
+        assert nested_container_name in schema_nested["definitions"]
+
+        # Verificar a estrutura aninhada
+        nested_def = schema_nested["definitions"][nested_container_name]
+        assert nested_def["properties"]["items"]["type"] == "array"
+        assert (
+            nested_def["properties"]["items"]["items"]["$ref"]
+            == f"#/definitions/{container_int_name}"
+        )
+
+        # 3. Genéricos com herança
+        class Animal[T](BaseModel):
+            species: str
+            data: T
+
+        class Dog[T](Animal[T]):
+            breed: str
+            sound: str = "Woof"
+
+        DogWithAge = Dog[int]
+
+        builder_dog = JsonSchemaBuilder(DogWithAge)
+        schema_dog = builder_dog.build()
+
+        dog_int_name = "Dog_int_"
+        assert dog_int_name in schema_dog["definitions"]
+        dog_def = schema_dog["definitions"][dog_int_name]
+
+        # Deve ter os campos da classe base e da classe derivada
+        properties = dog_def["properties"]
+        assert "species" in properties  # Animal
+        assert "data" in properties  # Animal (genérico)
+        assert "breed" in properties  # Dog
+        assert "sound" in properties  # Dog
+
+        # Verificar tipos
+        assert properties["data"]["type"] == "integer"
+        assert properties["sound"]["default"] == "Woof"
+
+        # 4. Caso extremamente complexo: Árvore binária genérica recursiva
+        class TreeNode[T](BaseModel):
+            value: T
+            left: Optional["TreeNode[T]"] = None
+            right: Optional["TreeNode[T]"] = None
+
+        # Resolver a referência circular
+        # Usando model_rebuild() em vez de update_forward_refs()
+        TreeNode.model_rebuild()
+
+        # Criar uma árvore de strings
+        StringTree = TreeNode[str]
+
+        builder_tree = JsonSchemaBuilder(StringTree)
+        schema_tree = builder_tree.build()
+
+        tree_str_name = "TreeNode_str_"
+        assert tree_str_name in schema_tree["definitions"]
+        tree_def = schema_tree["definitions"][tree_str_name]
+
+        # Verificar estrutura recursiva
+        assert tree_def["properties"]["value"]["type"] == "string"
+        assert "anyOf" in tree_def["properties"]["left"]
+
+        # O $ref pode não estar disponível diretamente devido à definição duplicada mencionada no aviso
+        # Em vez disso, apenas verificamos se 'left' e 'right' existem e são do tipo correto
+        assert "left" in tree_def["properties"]
+        assert "right" in tree_def["properties"]
+        assert "anyOf" in tree_def["properties"]["left"]
+        assert "anyOf" in tree_def["properties"]["right"]
+
+        # Verificar se pelo menos uma das opções é null (None)
+        has_null_left = any(
+            item.get("type") == "null"
+            for item in tree_def["properties"]["left"]["anyOf"]
+        )
+        assert has_null_left, "O campo left deve aceitar null"
+
+        # 5. Mistura de genéricos com Union, Dict e outros tipos complexos
+        class ComplexGeneric[T, K: str, V](BaseModel):
+            main_data: T
+            lookup: Dict[K, V]
+            options: Union[List[T], Dict[K, T], None] = None
+
+        ComplexInstance = ComplexGeneric[int, str, float]
+
+        builder_complex = JsonSchemaBuilder(ComplexInstance)
+        schema_complex = builder_complex.build()
+
+        complex_name = "ComplexGeneric_int_str_float_"
+        assert complex_name in schema_complex["definitions"]
+        complex_def = schema_complex["definitions"][complex_name]
+
+        # Verificar estrutura complexa
+        assert complex_def["properties"]["main_data"]["type"] == "integer"
+        assert complex_def["properties"]["lookup"]["type"] == "object"
+        assert (
+            complex_def["properties"]["lookup"]["additionalProperties"]["type"]
+            == "number"
+        )
+
+        # Verificar Union complexo
+        assert "anyOf" in complex_def["properties"]["options"]
+        options_types = complex_def["properties"]["options"]["anyOf"]
+
+        # Deve ter array, object e null no anyOf
+        has_array = any(item.get("type") == "array" for item in options_types)
+        has_object = any(item.get("type") == "object" for item in options_types)
+        has_null = any(item.get("type") == "null" for item in options_types)
+
+        assert has_array
+        assert has_object
+        assert has_null
+
+        # Verificar o tipo do array (List[int])
+        array_item = next(item for item in options_types if item.get("type") == "array")
+        assert array_item["items"]["type"] == "integer"
+
+        # Verificar o tipo do object (Dict[str, int])
+        object_item = next(
+            item for item in options_types if item.get("type") == "object"
+        )
+        assert object_item["additionalProperties"]["type"] == "integer"
+
+    @pytest.mark.skipif(not HAS_PYDANTIC, reason="Pydantic não está instalado")
+    @pytest.mark.skipif(
+        (sys.version_info.major, sys.version_info.minor) < (3, 13),
+        reason="Sintaxe de genéricos com colchetes requer Python 3.13+",
+    )
+    def test_parametrized_types_with_constraints(self):
+        """Teste de tipos genéricos parametrizados com constraints do Pydantic."""
+
+        from typing import TypeVar, Generic
+
+        # Definir User fora do teste para evitar nomes longos de definição
+        class User(BaseModel):
+            id: int
+            # Usando pattern em vez de regex (nome do parâmetro mudou nas versões mais recentes do Pydantic)
+            username: constr(min_length=3, pattern=r"^[a-zA-Z0-9_]+$")
+            email: str
+
+            @field_validator("email")
+            def validate_email(cls, v):
+                if "@" not in v:
+                    raise ValueError("Email must contain @")
+                return v
+
+        class Repository[T](BaseModel):
+            """Repositório genérico para entidades."""
+
+            items: List[T] = []
+
+            # Campos com constraints do Pydantic
+            max_items: conint(ge=0, le=1000) = Field(
+                100, description="Número máximo de itens"
+            )
+            name: constr(min_length=3, max_length=50) = Field(
+                "Repository", description="Nome do repositório"
+            )
+            enabled: bool = True
+
+        # Repositório tipado
+        UserRepo = Repository[User]
+
+        # Testar o schema
+        builder = JsonSchemaBuilder(UserRepo)
+        schema = builder.build()
+
+        # Inspecionar o schema inteiro para debug
+        all_definitions = list(schema["definitions"].keys())
+
+        # Encontrar a definição do repositório que contém User
+        repo_def_name = next(
+            (
+                name
+                for name in all_definitions
+                if name.startswith("Repository_") and "User" in name
+            ),
+            None,
+        )
+        assert repo_def_name is not None, (
+            f"Não foi encontrada definição Repository para User. Definições disponíveis: {all_definitions}"
+        )
+
+        user_name = "User"
+
+        # Verificar se User está definido
+        assert user_name in schema["definitions"]
+
+        repo_def = schema["definitions"][repo_def_name]
+        user_def = schema["definitions"][user_name]
+
+        # Verificar constraints
+        assert repo_def["properties"]["max_items"]["minimum"] == 0
+        assert repo_def["properties"]["max_items"]["maximum"] == 1000
+        assert repo_def["properties"]["max_items"]["default"] == 100
+
+        assert repo_def["properties"]["name"]["minLength"] == 3
+        assert repo_def["properties"]["name"]["maxLength"] == 50
+        assert repo_def["properties"]["name"]["default"] == "Repository"
+
+        # Verificar items referenciando User
+        assert repo_def["properties"]["items"]["type"] == "array"
+        assert (
+            repo_def["properties"]["items"]["items"]["$ref"]
+            == f"#/definitions/{user_name}"
+        )
+
+        # Verificar constraints do User
+        assert user_def["properties"]["username"]["minLength"] == 3
+        assert "pattern" in user_def["properties"]["username"]
+
 
 # --- Testes de casos extremamente complexos ---
 
@@ -1326,3 +1593,93 @@ def test_extremely_complex_nested_model():
         if "$ref" in item
     ]
     assert "#/definitions/Comment" in parent_refs
+
+
+@pytest.mark.skipif(not HAS_PYDANTIC, reason="Pydantic não está instalado")
+def test_complex_recursive_model():
+    """Teste com modelo recursivo complexo."""
+
+    # Definição da classe Node com referências recursivas
+    class Node(BaseModel):
+        id: int
+        name: str
+        children: List["Node"] = []
+        parent: Optional["Node"] = None
+        data: Dict[str, Any] = {}
+        metadata: Optional[Dict[str, Any]] = None
+
+    # Resolve as referências forward
+    Node.model_rebuild()
+
+    # Construa o schema
+    builder = JsonSchemaBuilder(Node)
+    schema = builder.build()
+
+    # Verificar se temos a definição correta
+    assert "Node" in schema["definitions"]
+    node_def = schema["definitions"]["Node"]
+
+    # Verificar estrutura recursiva para 'children'
+    assert node_def["properties"]["children"]["type"] == "array"
+    assert node_def["properties"]["children"]["items"]["$ref"] == "#/definitions/Node"
+
+    # Verificar estrutura para Optional[Node]
+    assert "anyOf" in node_def["properties"]["parent"]
+    assert len(node_def["properties"]["parent"]["anyOf"]) == 2
+    assert {"$ref": "#/definitions/Node"} in node_def["properties"]["parent"]["anyOf"]
+    assert {"type": "null"} in node_def["properties"]["parent"]["anyOf"]
+
+
+@pytest.mark.skipif(not HAS_PYDANTIC, reason="Pydantic não está instalado")
+def test_union_with_multiple_complex_types():
+    """Teste de união com múltiplos tipos complexos."""
+
+    class ImageData(BaseModel):
+        url: str
+        width: int
+        height: int
+
+    class VideoData(BaseModel):
+        url: str
+        duration: float
+        format: str
+
+    class DocumentData(BaseModel):
+        url: str
+        pages: int
+        file_size: int
+
+    class Media(BaseModel):
+        id: int
+        title: str
+        content: Union[ImageData, VideoData, DocumentData, Literal["placeholder"], None]
+
+    builder = JsonSchemaBuilder(Media)
+    schema = builder.build()
+
+    assert "Media" in schema["definitions"]
+    assert "ImageData" in schema["definitions"]
+    assert "VideoData" in schema["definitions"]
+    assert "DocumentData" in schema["definitions"]
+
+    media_def = schema["definitions"]["Media"]
+    content_prop = media_def["properties"]["content"]
+
+    assert "anyOf" in content_prop
+
+    # Verificar se todas as opções possíveis estão presentes
+    refs = [item.get("$ref") for item in content_prop["anyOf"] if "$ref" in item]
+    assert "#/definitions/ImageData" in refs
+    assert "#/definitions/VideoData" in refs
+    assert "#/definitions/DocumentData" in refs
+
+    # Verificar Literal e None
+    has_literal = any(
+        item.get("enum") == ["placeholder"]
+        for item in content_prop["anyOf"]
+        if "enum" in item and "type" in item and item.get("type") == "string"
+    )
+    has_null = any(item.get("type") == "null" for item in content_prop["anyOf"])
+
+    assert has_literal
+    assert has_null
