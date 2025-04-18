@@ -15,7 +15,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.directories]
-packages = ["src"]
+packages = ["rsb"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rsb"]
+packages = ["rsb"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
