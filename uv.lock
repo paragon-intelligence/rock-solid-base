@@ -119,7 +119,7 @@ wheels = [
 
 [[package]]
 name = "rock-solid-base"
-version = "0.0.12"
+version = "0.0.14"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
