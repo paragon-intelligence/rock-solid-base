@@ -23,6 +23,8 @@ from typing import (
 from rsb.json.json_schema_builder import JsonSchemaBuilder
 from rsb.json.unsuported_type_error import UnsupportedTypeError
 
+print(">>> Importações realizadas")
+
 
 # --- Test Fixtures and Helper Classes ---
 
@@ -545,10 +547,6 @@ def test_remove_examples_option():
         "examples"
         not in schema_without["definitions"]["ClassWithExamples"]["properties"]["id"]
     )
-
-
-# Use importorskip for optional dependency jsonref
-jsonref = pytest.importorskip("jsonref")
 
 
 def test_dereference_option_true():
