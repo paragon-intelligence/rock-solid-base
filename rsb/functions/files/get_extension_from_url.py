@@ -1,4 +1,4 @@
-from src.infrastructure.functions.files.get_extension_from_filename import (
+from gat.functions.files.get_extension_from_filename import (
     get_extension_from_filename,
 )
 
