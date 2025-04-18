@@ -7,7 +7,10 @@ from typing import Awaitable, Callable
 
 
 def run_sync[**P, _T](
-    func: Callable[P, Awaitable[_T]], *args: P.args, **kwargs: P.kwargs
+    func: Callable[P, Awaitable[_T]],
+    timeout: float | None = None,
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> _T:
     """
     Runs a callable synchronously. If called from an async context in the main thread,
@@ -16,6 +19,8 @@ def run_sync[**P, _T](
 
     Args:
         func: The callable to execute.
+        timeout: Maximum time to wait for the callable to complete (in seconds).
+                 None means wait indefinitely.
         *args: Positional arguments to pass to the callable.
         **kwargs: Keyword arguments to pass to the callable.
 
@@ -46,6 +51,6 @@ def run_sync[**P, _T](
 
             with ThreadPoolExecutor() as pool:
                 future = pool.submit(run_in_new_loop)
-                return future.result(30)
+                return future.result(timeout)
     else:
-        return asyncio.run_coroutine_threadsafe(_async_wrapper(), loop).result()
+        return asyncio.run_coroutine_threadsafe(_async_wrapper(), loop).result(timeout)
