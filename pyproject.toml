@@ -1,13 +1,14 @@
 [project]
 name = "rock-solid-base"
-version = "0.1.0"
+version = "v0.0.1"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Arthur Brenno", email = "64020210+arthurbrenno@users.noreply.github.com" }
-]
 requires-python = ">=3.13.1"
 dependencies = []
+
+[[project.authors]]
+name = "Arthur Brenno"
+email = "64020210+arthurbrenno@users.noreply.github.com"
 
 [project.scripts]
 rsb = "rsb:main"
