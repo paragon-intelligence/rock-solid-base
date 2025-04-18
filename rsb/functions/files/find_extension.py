@@ -1,13 +1,13 @@
-from gat.functions.files.get_extension_agressivelly import (
+from rsb.functions.files.get_extension_agressivelly import (
     get_extension_agressivelly,
 )
-from gat.functions.files.get_extension_from_filename import (
+from rsb.functions.files.get_extension_from_filename import (
     get_extension_from_filename,
 )
-from gat.functions.files.get_extension_from_url import (
+from rsb.functions.files.get_extension_from_url import (
     get_extension_from_url,
 )
-from gat.functions.mime_to_ext import mime_to_ext
+from rsb.functions.mime_to_ext import mime_to_ext
 
 
 def find_extension(
