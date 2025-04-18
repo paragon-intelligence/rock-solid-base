@@ -10,9 +10,6 @@ dependencies = []
 name = "Arthur Brenno"
 email = "64020210+arthurbrenno@users.noreply.github.com"
 
-[project.scripts]
-rsb = "rsb:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
