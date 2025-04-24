@@ -44,5 +44,5 @@
         "terminal.ansiWhite": "#D4D4D4",
         "terminal.ansiYellow": "#D7BA7D"
     },
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "strict"
 }

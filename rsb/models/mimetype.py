@@ -59,10 +59,6 @@ class _MimeType:
 
     def _validate_and_set(self, mime_type: str) -> None:
         """Internal validation logic."""
-        if not isinstance(mime_type, str):
-            # Erro de tipo, Pydantic deve tratar antes
-            raise TypeError(f"Expected string, got {type(mime_type).__name__}")
-
         if not re.match(self._constraints.pattern, mime_type):
             # Erro de formato
             raise ValueError(f"Invalid MIME type format: '{mime_type}'")
