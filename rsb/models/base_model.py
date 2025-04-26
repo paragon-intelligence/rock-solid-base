@@ -2,4 +2,8 @@ from __future__ import annotations
 
 import pydantic
 
-BaseModel = pydantic.BaseModel
+
+class BaseModel(pydantic.BaseModel):
+    """Alias for pydantic.BaseModel."""
+
+    pass
