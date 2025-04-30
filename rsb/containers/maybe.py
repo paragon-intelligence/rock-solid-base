@@ -144,7 +144,9 @@ class Maybe[T = object](MaybeProtocol[T]):
                 return Maybe[object](None, self._ignore_errors)
             raise
 
-    def map[U](self, function: Callable[[T], U]) -> MaybeProtocol[U]:
+    def map[U](
+        self, function: Callable[[T], U], ignore_errors: bool | None = None
+    ) -> MaybeProtocol[U]:
         """
         Transforms the value inside a successful container using a pure function.
 
@@ -153,6 +155,7 @@ class Maybe[T = object](MaybeProtocol[T]):
 
         Args:
             function: A function to apply to the contained value
+            ignore_errors: Optional override for instance error handling behavior.
 
         Returns:
             A new Maybe containing the transformed value
@@ -163,16 +166,24 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some(1).map(add_one)  # Returns Some(2)
             >>> Nothing.map(add_one)  # Returns Nothing
         """
+        effective_ignore_errors = (
+            self._ignore_errors if ignore_errors is None else ignore_errors
+        )
+
         if self.obj is None:
-            return Maybe[U](None, self._ignore_errors)
+            return Maybe[U](None, effective_ignore_errors)
         try:
-            return Maybe[U](function(self.obj), self._ignore_errors)
+            return Maybe[U](function(self.obj), effective_ignore_errors)
         except Exception:
-            if self._ignore_errors:
-                return Maybe[U](None, self._ignore_errors)
+            if effective_ignore_errors:
+                return Maybe[U](None, effective_ignore_errors)
             raise
 
-    def bind[U](self, function: Callable[[T], MaybeProtocol[U]]) -> MaybeProtocol[U]:
+    def bind[U](
+        self,
+        function: Callable[[T], MaybeProtocol[U]],
+        ignore_errors: bool | None = None,
+    ) -> MaybeProtocol[U]:
         """
         Chains operations that return Maybe containers.
 
@@ -181,6 +192,7 @@ class Maybe[T = object](MaybeProtocol[T]):
 
         Args:
             function: A function that takes a value and returns a Maybe
+            ignore_errors: Optional override for instance error handling behavior.
 
         Returns:
             The result of applying the function to the contained value
@@ -191,19 +203,25 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some(4).bind(half)  # Returns Some(2.0)
             >>> Some(0).bind(half)  # Returns Nothing
         """
+        effective_ignore_errors = (
+            self._ignore_errors if ignore_errors is None else ignore_errors
+        )
+
         if self.obj is None:
-            return Maybe[U](None, self._ignore_errors)
+            return Maybe[U](None, effective_ignore_errors)
         try:
             result = function(self.obj)
             if isinstance(result, Maybe):
-                result._ignore_errors = self._ignore_errors
+                result._ignore_errors = effective_ignore_errors
             return result
         except Exception:
-            if self._ignore_errors:
-                return Maybe[U](None, self._ignore_errors)
+            if effective_ignore_errors:
+                return Maybe[U](None, effective_ignore_errors)
             raise
 
-    def bind_optional[U](self, function: Callable[[T], U | None]) -> Maybe[U]:
+    def bind_optional[U](
+        self, function: Callable[[T], U | None], ignore_errors: bool | None = None
+    ) -> Maybe[U]:
         """
         Binds a function returning an optional value over a container.
 
@@ -213,6 +231,7 @@ class Maybe[T = object](MaybeProtocol[T]):
 
         Args:
             function: A function that takes a value and returns a value or None
+            ignore_errors: Optional override for instance error handling behavior.
 
         Returns:
             Some containing the result or Nothing
@@ -223,22 +242,31 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some("hello").bind_optional(get_length)  # Returns Some(5)
             >>> Some("").bind_optional(get_length)  # Returns Nothing
         """
+        effective_ignore_errors = (
+            self._ignore_errors if ignore_errors is None else ignore_errors
+        )
+
         if self.obj is None:
-            return Maybe[U](None, self._ignore_errors)
+            return Maybe[U](None, effective_ignore_errors)
         try:
             result = function(self.obj)
-            return Maybe[U](result, self._ignore_errors)
+            return Maybe[U](result, effective_ignore_errors)
         except Exception:
-            if self._ignore_errors:
-                return Maybe[U](None, self._ignore_errors)
+            if effective_ignore_errors:
+                return Maybe[U](None, effective_ignore_errors)
             raise
 
-    def apply[U](self, function: MaybeProtocol[Callable[[T], U]]) -> MaybeProtocol[U]:
+    def apply[U](
+        self,
+        function: MaybeProtocol[Callable[[T], U]],
+        ignore_errors: bool | None = None,
+    ) -> MaybeProtocol[U]:
         """
         Applies a function wrapped in a Maybe to the value in this Maybe.
 
         Args:
             function: A Maybe containing a function to apply
+            ignore_errors: Optional override for instance error handling behavior.
 
         Returns:
             A new Maybe containing the result of applying the function
@@ -249,17 +277,24 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some(1).apply(Nothing)  # Returns Nothing
             >>> Nothing.apply(Some(lambda x: x + 1))  # Returns Nothing
         """
-        # TODO(arthur) guarantee obj is present.
+        effective_ignore_errors = (
+            self._ignore_errors if ignore_errors is None else ignore_errors
+        )
+
         if self.obj is None or function.obj is None:  # type: ignore
-            return Maybe[U](None, self._ignore_errors)
+            return Maybe[U](None, effective_ignore_errors)
         try:
-            return Maybe[U](function.obj(self.obj), self._ignore_errors)  # type: ignore
+            return Maybe[U](function.obj(self.obj), effective_ignore_errors)  # type: ignore
         except Exception:
-            if self._ignore_errors:
-                return Maybe[U](None, self._ignore_errors)
+            if effective_ignore_errors:
+                return Maybe[U](None, effective_ignore_errors)
             raise
 
-    def lash(self, function: Callable[[Any], MaybeProtocol[T]]) -> MaybeProtocol[T]:
+    def lash(
+        self,
+        function: Callable[[Any], MaybeProtocol[T]],
+        ignore_errors: bool | None = None,
+    ) -> MaybeProtocol[T]:
         """
         Composes failed container with a function that returns a container.
 
@@ -268,6 +303,7 @@ class Maybe[T = object](MaybeProtocol[T]):
 
         Args:
             function: A function that takes None and returns a Maybe
+            ignore_errors: Optional override for instance error handling behavior.
 
         Returns:
             Original Some instance or the result of the function
@@ -278,16 +314,20 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some('value').lash(fallback)  # Returns Some('value')
             >>> Nothing.lash(fallback)  # Returns Some('default')
         """
+        effective_ignore_errors = (
+            self._ignore_errors if ignore_errors is None else ignore_errors
+        )
+
         if self.obj is not None:
             return self
         try:
             result = function(None)
             if isinstance(result, Maybe):
-                result._ignore_errors = self._ignore_errors
+                result._ignore_errors = effective_ignore_errors
             return result
         except Exception:
-            if self._ignore_errors:
-                return Maybe[T](None, self._ignore_errors)
+            if effective_ignore_errors:
+                return Maybe[T](None, effective_ignore_errors)
             raise
 
     def unwrap(self) -> T | None:
