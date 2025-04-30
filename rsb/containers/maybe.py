@@ -35,6 +35,15 @@ class Maybe[T = object](MaybeProtocol[T]):
        maybe_none_user: Maybe[User] = Maybe(None)
        ```
 
+    3. **Error Handling Behavior:**
+       ```python
+       # Default behavior: errors in operations are caught and return Maybe(None)
+       default_maybe = Maybe(obj)
+
+       # Strict behavior: errors in operations are raised
+       strict_maybe = Maybe(obj, ignore_errors=False)
+       ```
+
     **Usage Examples:**
 
     ```python
@@ -63,10 +72,12 @@ class Maybe[T = object](MaybeProtocol[T]):
     """
 
     _obj: T | None
+    _ignore_errors: bool
     empty: ClassVar[Maybe[object] | None] = None  # Will be set after class definition
 
-    def __init__(self, obj: T | None = None) -> None:
+    def __init__(self, obj: T | None = None, ignore_errors: bool = True) -> None:
         self._obj = obj
+        self._ignore_errors = ignore_errors
         super().__init__()
 
     @property
@@ -97,11 +108,13 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> maybe_none.name.unwrap()  # Raises UnwrapFailedError
         """
         if self._obj is None:
-            return Maybe[object](None)
+            return Maybe[object](None, self._ignore_errors)
         try:
-            return Maybe[object](getattr(self._obj, attr))
+            return Maybe[object](getattr(self._obj, attr), self._ignore_errors)
         except AttributeError:
-            return Maybe[object](None)
+            if self._ignore_errors:
+                return Maybe[object](None, self._ignore_errors)
+            raise
 
     def __call__(self, *args: object, **kwargs: object) -> Maybe[object]:
         """
@@ -122,12 +135,14 @@ class Maybe[T = object](MaybeProtocol[T]):
             'Hello, Alice!'
         """
         if self.obj is None or not callable(self.obj):
-            return Maybe[object](None)
+            return Maybe[object](None, self._ignore_errors)
         try:
-            result = self.obj(*args, **kwargs)
-            return Maybe[object](cast(object, result))
+            result: Any = self.obj(*args, **kwargs)
+            return Maybe[object](cast(object, result), self._ignore_errors)
         except Exception:
-            return Maybe[object](None)
+            if self._ignore_errors:
+                return Maybe[object](None, self._ignore_errors)
+            raise
 
     def map[U](self, function: Callable[[T], U]) -> MaybeProtocol[U]:
         """
@@ -149,11 +164,13 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Nothing.map(add_one)  # Returns Nothing
         """
         if self.obj is None:
-            return Maybe[U](None)
+            return Maybe[U](None, self._ignore_errors)
         try:
-            return Maybe[U](function(self.obj))
+            return Maybe[U](function(self.obj), self._ignore_errors)
         except Exception:
-            return Maybe[U](None)
+            if self._ignore_errors:
+                return Maybe[U](None, self._ignore_errors)
+            raise
 
     def bind[U](self, function: Callable[[T], MaybeProtocol[U]]) -> MaybeProtocol[U]:
         """
@@ -175,11 +192,16 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some(0).bind(half)  # Returns Nothing
         """
         if self.obj is None:
-            return Maybe[U](None)
+            return Maybe[U](None, self._ignore_errors)
         try:
-            return function(self.obj)
+            result = function(self.obj)
+            if isinstance(result, Maybe):
+                result._ignore_errors = self._ignore_errors
+            return result
         except Exception:
-            return Maybe[U](None)
+            if self._ignore_errors:
+                return Maybe[U](None, self._ignore_errors)
+            raise
 
     def bind_optional[U](self, function: Callable[[T], U | None]) -> Maybe[U]:
         """
@@ -202,12 +224,14 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Some("").bind_optional(get_length)  # Returns Nothing
         """
         if self.obj is None:
-            return Maybe[U](None)
+            return Maybe[U](None, self._ignore_errors)
         try:
             result = function(self.obj)
-            return Maybe[U](result)
+            return Maybe[U](result, self._ignore_errors)
         except Exception:
-            return Maybe[U](None)
+            if self._ignore_errors:
+                return Maybe[U](None, self._ignore_errors)
+            raise
 
     def apply[U](self, function: MaybeProtocol[Callable[[T], U]]) -> MaybeProtocol[U]:
         """
@@ -227,11 +251,13 @@ class Maybe[T = object](MaybeProtocol[T]):
         """
         # TODO(arthur) guarantee obj is present.
         if self.obj is None or function.obj is None:  # type: ignore
-            return Maybe[U](None)
+            return Maybe[U](None, self._ignore_errors)
         try:
-            return Maybe[U](function.obj(self.obj))  # type: ignore
+            return Maybe[U](function.obj(self.obj), self._ignore_errors)  # type: ignore
         except Exception:
-            return Maybe[U](None)
+            if self._ignore_errors:
+                return Maybe[U](None, self._ignore_errors)
+            raise
 
     def lash(self, function: Callable[[Any], MaybeProtocol[T]]) -> MaybeProtocol[T]:
         """
@@ -255,9 +281,14 @@ class Maybe[T = object](MaybeProtocol[T]):
         if self.obj is not None:
             return self
         try:
-            return function(None)
+            result = function(None)
+            if isinstance(result, Maybe):
+                result._ignore_errors = self._ignore_errors
+            return result
         except Exception:
-            return Maybe[T](None)
+            if self._ignore_errors:
+                return Maybe[T](None, self._ignore_errors)
+            raise
 
     def unwrap(self) -> T | None:
         """
@@ -425,42 +456,51 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> maybe_dict["c"].unwrap()  # Raises UnwrapFailedError
         """
         if self.obj is None:
-            return Maybe(None)
+            return Maybe(None, self._ignore_errors)
 
         # Mapping type (dict-like)
         if isinstance(self.obj, Mapping):
             try:
-                return Maybe(self.obj[key])  # type: ignore[reportUnknownArgumentType]
+                return Maybe(self.obj[key], self._ignore_errors)  # type: ignore[reportUnknownArgumentType]
             except (KeyError, TypeError):
-                return Maybe(None)
+                if self._ignore_errors:
+                    return Maybe(None, self._ignore_errors)
+                raise
 
         # Sequence type (list-like)
         elif isinstance(self.obj, Sequence):
             if not isinstance(key, (int, slice)):
-                return Maybe(None)
+                return Maybe(None, self._ignore_errors)
             try:
-                return Maybe(self.obj[key])  # type: ignore[reportUnknownArgumentType]
+                return Maybe(self.obj[key], self._ignore_errors)  # type: ignore[reportUnknownArgumentType]
             except (IndexError, TypeError):
-                return Maybe(None)
+                if self._ignore_errors:
+                    return Maybe(None, self._ignore_errors)
+                raise
 
         # Any other type with __getitem__
         elif hasattr(self.obj, "__getitem__"):
             try:
                 # Access __getitem__ directly to avoid type errors
                 get_item_method = getattr(self.obj, "__getitem__")
-                return Maybe(get_item_method(key))
+                return Maybe(get_item_method(key), self._ignore_errors)
             except (IndexError, KeyError, TypeError, AttributeError):
-                return Maybe(None)
+                if self._ignore_errors:
+                    return Maybe(None, self._ignore_errors)
+                raise
 
-        return Maybe(None)
+        return Maybe(None, self._ignore_errors)
 
     @classmethod
-    def from_optional(cls, inner_value: T | None) -> MaybeProtocol[T]:
+    def from_optional(
+        cls, inner_value: T | None, ignore_errors: bool = True
+    ) -> MaybeProtocol[T]:
         """
         Creates new instance of Maybe container based on an optional value.
 
         Args:
             inner_value: Value to wrap in Maybe or None
+            ignore_errors: Whether to ignore errors in operations (defaults to True)
 
         Returns:
             Some containing the value if not None, otherwise Nothing
@@ -469,15 +509,16 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Maybe.from_optional(1)  # Returns Some(1)
             >>> Maybe.from_optional(None)  # Returns Nothing
         """
-        return cls(inner_value)
+        return cls(inner_value, ignore_errors)
 
     @classmethod
-    def from_value(cls, inner_value: T) -> MaybeProtocol[T]:
+    def from_value(cls, inner_value: T, ignore_errors: bool = True) -> MaybeProtocol[T]:
         """
         Creates new instance of Maybe container based on a value.
 
         Args:
             inner_value: Value to wrap in Maybe
+            ignore_errors: Whether to ignore errors in operations (defaults to True)
 
         Returns:
             Some containing the value
@@ -486,7 +527,7 @@ class Maybe[T = object](MaybeProtocol[T]):
             >>> Maybe.from_value(1)  # Returns Some(1)
             >>> Maybe.from_value(None)  # Returns Some(None)
         """
-        return cls(inner_value)
+        return cls(inner_value, ignore_errors)
 
     @classmethod
     def do(cls, expr: Generator[T, None, None]) -> MaybeProtocol[T]:
