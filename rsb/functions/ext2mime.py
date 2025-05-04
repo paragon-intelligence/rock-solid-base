@@ -1,7 +1,7 @@
 import mimetypes
 
 
-def ext_to_mime(extension: str) -> str:
+def ext2mime(extension: str) -> str:
     """
     Returns the MIME type associated with the given file extension.
     Returns None if the extension is unknown.

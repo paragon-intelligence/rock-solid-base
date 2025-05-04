@@ -7,7 +7,7 @@ from rsb.functions.files.get_extension_from_filename import (
 from rsb.functions.files.get_extension_from_url import (
     get_extension_from_url,
 )
-from rsb.functions.mime_to_ext import mime_to_ext
+from rsb.functions.mime2ext import mime2ext
 
 
 def find_extension(
@@ -19,7 +19,7 @@ def find_extension(
 ) -> str:
     if filename and (ext := get_extension_from_filename(filename)):
         return ext
-    if content_type and (ext := mime_to_ext(content_type)):
+    if content_type and (ext := mime2ext(content_type)):
         return ext
     if contents and (ext := get_extension_agressivelly(contents)):
         return ext

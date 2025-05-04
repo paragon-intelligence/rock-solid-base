@@ -1,7 +1,7 @@
 import mimetypes
 
 
-def mime_to_ext(mime: str) -> str:
+def mime2ext(mime: str) -> str:
     """
     Returns the most common file extension for the given MIME type.
     Returns None if the MIME type is unknown.
