@@ -1,6 +1,6 @@
 [project]
 name = "rock-solid-base"
-version = "v0.0.26"
+version = "v0.0.27"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,9 +21,4 @@ packages = ["rsb"]
 packages = ["rsb"]
 
 [dependency-groups]
-dev = [
-    "msgspec>=0.19.0",
- "pytest>=8.3.5",
- "pytest-mock>=3.14.0",
- "python-magic>=0.4.27",
-]
+dev = ["msgspec>=0.19.0", "pytest>=8.3.5", "pytest-mock>=3.14.0", "python-magic>=0.4.27"]
