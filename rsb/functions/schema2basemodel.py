@@ -442,8 +442,3 @@ schema = {
     },
     "required": ["name", "age"],
 }
-
-PersonModel = schema2basemodel(schema)
-# Now you can use it like any other Pydantic model
-person = PersonModel(name="John Doe", age=30, tags=["developer"])
-print(person)
