@@ -424,21 +424,3 @@ class SchemaConverter:
 
         # Default to Any for unknown types
         return cast(Type[Any], Any)
-
-
-schema = {
-    "title": "Person",
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "integer", "minimum": 0},
-        "email": {"type": "string", "format": "email"},
-        "tags": {"type": "array", "items": {"type": "string"}},
-        "address": {
-            "type": "object",
-            "properties": {"street": {"type": "string"}, "city": {"type": "string"}},
-            "required": ["street", "city"],
-        },
-    },
-    "required": ["name", "age"],
-}
