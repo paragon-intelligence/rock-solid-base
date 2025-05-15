@@ -18,8 +18,9 @@ import decimal
 from enum import Enum
 import inspect
 
-# Type aliases to help with type checking
-FieldDefinition = Tuple[Type[Any], Any]  # type: ignore
+# Type aliases to help with type checking - allowing more flexibility
+# Use Any for the first element to allow any type
+FieldDefinition = Tuple[Any, Any]
 FieldDefinitions = Dict[str, FieldDefinition]
 
 # Type variable for BaseModel to help with return types
@@ -147,12 +148,15 @@ class SchemaConverter:
                         # Extract type and default from field_info
                         field_type = field_info.annotation
                         default = field_info.default
+                        # Ensure field_type is not None to match FieldDefinition
+                        if field_type is None:
+                            field_type = Any
                         fields_dict[name] = (field_type, default)
 
                     # Use type: ignore to bypass typing issues with create_model
                     new_model = create_model(ref_name, **fields_dict)  # type: ignore
                     self.model_registry[ref_name] = new_model
-                    return new_model
+                    return cast(Type[BaseModel], new_model)
 
                 # Set correct name
                 placeholder.__name__ = ref_name
@@ -211,7 +215,7 @@ class SchemaConverter:
 
                 setattr(model, "Config", Config)  # type: ignore
 
-        return model
+        return cast(Type[BaseModel], model)
 
     def _create_field_from_schema(
         self, name: str, schema: Dict[str, Any], is_required: bool
