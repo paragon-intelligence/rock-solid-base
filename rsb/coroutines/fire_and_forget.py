@@ -1,40 +1,38 @@
 import asyncio
-import logging
 from collections.abc import Callable
-from typing import Any, Coroutine, Optional
-
-logger = logging.getLogger(__name__)
+from typing import Any, Coroutine
 
 
 def fire_and_forget(
     async_func: Callable[..., Coroutine[Any, Any, Any]], *args: Any, **kwargs: Any
-) -> Optional[asyncio.Task[Any]]:
+) -> None:
     """
-    Schedules async_func to run without waiting for completion.
+    Schedules the async_func to run in the existing event loop if one is running.
+    Otherwise, it creates a new event loop and runs the coroutine to completion.
 
-    If called from within an async context, creates a task and returns it.
-    If called from sync context, runs the coroutine in a new event loop.
+    This function does not wait for the coroutine to finish if a loop is already
+    running ("fire-and-forget"). If no loop is detected in the current thread,
+    it will block just long enough to run `async_func()` in a newly-created loop
+    (which is closed immediately afterward).
 
-    Returns:
-        The created Task if in async context, None otherwise.
+    Args:
+        async_func: The asynchronous function (coroutine) to run.
+        *args: Positional arguments to pass to the coroutine.
+        **kwargs: Keyword arguments to pass to the coroutine.
     """
     try:
+        # Attempt to get a running loop in the current thread.
         loop = asyncio.get_running_loop()
-        # We're in an async context - create task with error handling
-        task = loop.create_task(async_func(*args, **kwargs))
 
-        # Add error handler to prevent silent failures
-        def handle_exception(task: asyncio.Task[Any]) -> None:
-            try:
-                task.result()
-            except Exception as e:
-                logger.exception(f"Exception in fire-and-forget task: {e}")
-
-        task.add_done_callback(handle_exception)
-        return task
-
+        if loop.is_running():
+            # We have a loop, and it's actively running. Schedule the coroutine
+            # to run asynchronously (true fire-and-forget).
+            loop.create_task(async_func(*args, **kwargs))
+        else:
+            # We have a loop object in this thread, but it's not actually running.
+            # Run the coroutine to completion (blocking briefly).
+            loop.run_until_complete(async_func(*args, **kwargs))
     except RuntimeError:
-        # No running loop - we're in sync context
-        # Run in a new event loop
+        # No event loop in the current thread -> create one and run the coroutine
+        # immediately to completion, then close the loop.
         asyncio.run(async_func(*args, **kwargs))
-        return None
