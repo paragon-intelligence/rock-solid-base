@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.1.1
+## v0.1.2
 
-- fix: wrong version of fire_and_forget pushed
+- 
