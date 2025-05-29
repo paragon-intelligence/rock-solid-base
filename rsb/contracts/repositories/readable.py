@@ -58,7 +58,7 @@ class AsyncReader[T = Any, I = str](abc.ABC):
     """
 
     @abc.abstractmethod
-    async def read(self, uid: I, filters: dict[str, object] | None = None) -> T:
+    async def read_async(self, uid: I, filters: dict[str, object] | None = None) -> T:
         """
         Asynchronously read a single entity by its identifier.
 
@@ -81,7 +81,7 @@ class AsyncBulkReader[T](abc.ABC):
     """
 
     @abc.abstractmethod
-    async def read_all(self, filters: dict[str, object] | None = None) -> Sequence[T]:
+    async def read_all_async(self, filters: dict[str, object] | None = None) -> Sequence[T]:
         """
         Asynchronously read multiple entities matching the specified filters.
 
