@@ -534,7 +534,7 @@ class Maybe[T = object](MaybeProtocol[T]):
     @classmethod
     def from_optional(
         cls, inner_value: T | None, ignore_errors: bool = True
-    ) -> MaybeProtocol[T]:
+    ) -> Maybe[T]:
         """
         Creates new instance of Maybe container based on an optional value.
 
