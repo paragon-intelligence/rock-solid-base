@@ -50,7 +50,7 @@ async def run_async[**P, _T](
             # Cannot create a loop in a non-main thread with no existing loop
             raise RuntimeError(
                 "Cannot create event loop in non-main thread with no existing loop. "
-                "Either run in main thread, or ensure an event loop is running."
+                + "Either run in main thread, or ensure an event loop is running."
             )
 
     # Use partial to bind the arguments to the function
