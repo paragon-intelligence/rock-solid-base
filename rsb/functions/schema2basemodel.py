@@ -263,7 +263,7 @@ class SchemaConverter:
         # String validations
         if schema_type == "string":
             if "pattern" in schema:
-                field_kwargs["regex"] = schema["pattern"]
+                field_kwargs["pattern"] = schema["pattern"]
             if "minLength" in schema:
                 field_kwargs["min_length"] = schema["minLength"]
             if "maxLength" in schema:
