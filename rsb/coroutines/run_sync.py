@@ -2,65 +2,73 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Awaitable, Callable
+from concurrent.futures import Future
+from typing import Awaitable, Callable, TypeVar, ParamSpec
+
+_T = TypeVar("_T")
+P = ParamSpec("P")
+
+# Persistent background loop setup
+_loop_thread: threading.Thread | None = None
+_loop: asyncio.AbstractEventLoop | None = None
+_loop_started = threading.Event()
 
 
-def run_sync[**P, _T](
+def _start_background_loop():
+    global _loop
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
+    _loop_started.set()
+    _loop.run_forever()
+
+
+def _ensure_background_loop_running():
+    global _loop_thread
+    if _loop_thread is None or not _loop_thread.is_alive():
+        _loop_thread = threading.Thread(target=_start_background_loop, daemon=True)
+        _loop_thread.start()
+        _loop_started.wait()
+
+
+def run_sync(
     func: Callable[P, Awaitable[_T]],
     timeout: float | None = None,
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> _T:
     """
-    Runs a callable synchronously. If called from an async context in the main thread,
-    it runs the callable in a new event loop in a separate thread. Otherwise, it
-    runs the callable directly or using `run_coroutine_threadsafe`.
-
-    Args:
-        func: The callable to execute.
-        timeout: Maximum time to wait for the callable to complete (in seconds).
-                 None means wait indefinitely.
-        *args: Positional arguments to pass to the callable.
-        **kwargs: Keyword arguments to pass to the callable.
-
-    Returns:
-        The result of the callable.
+    Runs an async function synchronously using a shared background event loop.
     """
 
     async def _async_wrapper() -> _T:
         return await func(*args, **kwargs)
 
-    # Try to get the running loop, but handle the case where there isn't one
     try:
-        loop = asyncio.get_running_loop()
-        loop_is_running = True
+        running_loop = asyncio.get_running_loop()
+        in_async_context = True
     except RuntimeError:
-        # No running event loop - we're in a synchronous context
-        loop = None
-        loop_is_running = False
+        running_loop = None
+        in_async_context = False
 
-    # If there's no running loop, just use asyncio.run
-    if not loop_is_running:
-        return asyncio.run(_async_wrapper())
+    if in_async_context:
+        if threading.current_thread() is threading.main_thread():
+            # Offload to separate thread if we're in main thread async context
+            def run_in_thread() -> _T:
+                return run_sync(func, timeout, *args, **kwargs)
 
-    # We have a running loop - need to handle this carefully
-    if threading.current_thread() is threading.main_thread():
-        # We're in the main thread with a running loop
-        # We need to run in a separate thread to avoid blocking
-        def run_in_new_loop():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                return new_loop.run_until_complete(_async_wrapper())
-            finally:
-                new_loop.close()
+            fut: Future[_T] = Future()
+            t = threading.Thread(target=lambda: fut.set_result(run_in_thread()))
+            t.start()
+            return fut.result(timeout)
+        else:
+            # In async context inside a thread — schedule in running loop
+            assert running_loop is not None
+            return asyncio.run_coroutine_threadsafe(
+                _async_wrapper(), running_loop
+            ).result(timeout)
 
-        with ThreadPoolExecutor() as pool:
-            future = pool.submit(run_in_new_loop)
-            return future.result(timeout)
-    else:
-        # We're in a background thread with a running loop in the main thread
-        # Use run_coroutine_threadsafe to schedule on the main loop
-        assert loop is not None  # loop_is_running=True guarantees loop is not None
-        return asyncio.run_coroutine_threadsafe(_async_wrapper(), loop).result(timeout)
+    # We're in sync context — use background loop
+    _ensure_background_loop_running()
+    assert _loop is not None
+    future = asyncio.run_coroutine_threadsafe(_async_wrapper(), _loop)
+    return future.result(timeout)
