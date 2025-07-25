@@ -10,10 +10,9 @@ from contextvars import copy_context
 # Global thread pool to avoid creating new threads repeatedly
 _executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="run_sync")
 
-# Track event loops to check if they're still running
-_loop_refs: weakref.WeakValueDictionary[int, asyncio.AbstractEventLoop] = (
-    weakref.WeakValueDictionary()
-)
+# Store the main thread's event loop specifically
+_main_loop_ref: weakref.ReferenceType[asyncio.AbstractEventLoop] | None = None
+_main_thread_id = threading.main_thread().ident
 
 
 def run_sync[**P, _T](
@@ -45,58 +44,50 @@ def run_sync[**P, _T](
 
     # Check current thread and event loop status
     current_thread = threading.current_thread()
-    is_main_thread = current_thread is threading.main_thread()
+    is_main_thread = current_thread.ident == _main_thread_id
 
     # Try to get the current event loop
     try:
         current_loop = asyncio.get_running_loop()
-        # Store a weak reference to check later if it's still valid
-        _loop_refs[id(current_loop)] = current_loop
+
+        # If we're in the main thread, store a reference to its loop
+        if is_main_thread:
+            global _main_loop_ref
+            _main_loop_ref = weakref.ref(current_loop)
+
     except RuntimeError:
         current_loop = None
 
     # Case 1: No running event loop - create and run
     if current_loop is None:
-        # Simple case - just run in a new event loop
         try:
             return asyncio.run(_async_wrapper())
         except RuntimeError as e:
             if "cannot be called from a running event loop" in str(e):
-                # Fallback: we might be in a weird state, use thread approach
+                # Fallback: use thread approach
                 return _run_in_thread_with_new_loop(_async_wrapper, timeout)
             raise
 
-    # Case 2: We have a running loop
-    # Check if the loop is still valid and not closed
-    if current_loop.is_closed():
-        # Loop is closed, need to create a new one
-        return _run_in_thread_with_new_loop(_async_wrapper, timeout)
-
-    # Case 3: Main thread with running loop
+    # Case 2: Main thread with running loop
     if is_main_thread:
         # We're in the main thread with a running loop
         # Must run in a separate thread to avoid blocking
         return _run_in_thread_with_new_loop(_async_wrapper, timeout)
 
-    # Case 4: Background thread with a running loop somewhere
-    # Need to find which loop we should schedule on
-
-    # First, check if there's a main thread loop
+    # Case 3: Background thread - try to use main thread's loop if available
     main_loop = _get_main_thread_loop()
 
-    if main_loop and not main_loop.is_closed():
-        # Schedule on the main thread's loop
+    if main_loop is not None:
+        # Try to schedule on the main thread's loop
         try:
             future = asyncio.run_coroutine_threadsafe(_async_wrapper(), main_loop)
             return future.result(timeout)
-        except RuntimeError as e:
-            if "Event loop is closed" in str(e):
-                # Loop was closed while we were trying to use it
-                return _run_in_thread_with_new_loop(_async_wrapper, timeout)
-            raise
-    else:
-        # No valid main loop, run in a new thread
-        return _run_in_thread_with_new_loop(_async_wrapper, timeout)
+        except Exception:
+            # Main loop failed (closed, etc.), fall back to new thread
+            pass
+
+    # Case 4: No usable main loop, create new one in thread
+    return _run_in_thread_with_new_loop(_async_wrapper, timeout)
 
 
 def _run_in_thread_with_new_loop[_T](
@@ -139,25 +130,35 @@ def _run_in_thread_with_new_loop[_T](
 
 def _get_main_thread_loop() -> asyncio.AbstractEventLoop | None:
     """Get the event loop of the main thread if it exists and is running."""
-    # This is a bit tricky - we need to check if the main thread has a loop
-    # We'll use our weak references to find valid loops
+    global _main_loop_ref
 
-    for _, loop in list(_loop_refs.items()):
-        if loop is not None and not loop.is_closed():  # type: ignore
-            # Check if this loop belongs to the main thread
-            # This is a heuristic - in practice, the main thread usually has the first loop created
-            try:
-                # Try to determine if this is the main loop by checking if we can schedule on it
-                # from a background thread (which should work for the main loop)
-                if threading.current_thread() is not threading.main_thread():
-                    # We're in a background thread, so we can test
-                    test_future = asyncio.run_coroutine_threadsafe(
-                        asyncio.sleep(0), loop
-                    )
-                    test_future.result(timeout=0.1)
-                    return loop
-            except Exception:
-                # This loop doesn't work, continue
-                continue
+    if _main_loop_ref is None:
+        return None
 
-    return None
+    loop = _main_loop_ref()
+    if loop is None:
+        # Loop was garbage collected
+        _main_loop_ref = None
+        return None
+
+    # Double-check that the loop is still usable
+    try:
+        # Check if loop is closed
+        if loop.is_closed():
+            _main_loop_ref = None
+            return None
+
+        # Try a quick non-blocking test to see if we can schedule on it
+        # We'll schedule a no-op coroutine and see if it works
+        async def _test_coro():
+            pass
+
+        test_future = asyncio.run_coroutine_threadsafe(_test_coro(), loop)
+        test_future.result(timeout=0.01)  # Very short timeout for quick test
+
+        return loop
+
+    except Exception:
+        # Loop is not usable, clear the reference
+        _main_loop_ref = None
+        return None
