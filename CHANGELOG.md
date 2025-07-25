@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.1.5
+## v0.1.6
 
-- feat(experimental) testing new (more robust) implementation of run_sync function.
+- 
