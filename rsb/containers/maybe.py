@@ -405,18 +405,15 @@ class Maybe[T = object](MaybeProtocol[T]):
         Iterator interface for use with do-notation.
 
         Yields:
-            The contained value
-
-        Raises:
-            UnwrapFailedError: If this is Nothing
+            The contained value if present.
 
         Examples:
             >>> list(iter(Some(5)))  # Returns [5]
-            >>> list(iter(Nothing))  # Raises UnwrapFailedError
+            >>> list(iter(Nothing))  # Returns []
         """
-        if self.obj is None:
-            raise UnwrapFailedError()
-        yield self.obj
+        if self.obj is not None:
+            yield self.obj
+        # If self.obj is None, do nothing (empty iterator)
 
     def __bool__(self) -> bool:
         """
